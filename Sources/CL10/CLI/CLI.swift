@@ -23,6 +23,7 @@ final class CLI {
 
         case "list":
             return talk("LIST")
+
         case "find":
             // cl10 find <query> → show only matching rows (indices stay canonical)
             guard args.count >= 2 else {
@@ -79,6 +80,10 @@ final class CLI {
 
         case "version":
             return showVersion()
+
+        case "quit":
+            // cl10 quit → ask the watcher to shut down gracefully
+            return talk("QUIT")
 
         default:
             printUsage()
@@ -175,6 +180,9 @@ final class CLI {
             exit(0)
         }
 
+        // Allow remote QUIT to trigger the same shutdown path
+        server.onQuit = { shutdown() }
+
         let sigint = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
         sigint.setEventHandler(handler: shutdown)
         sigint.resume()
@@ -187,7 +195,6 @@ final class CLI {
 
         RunLoop.main.run()  // keep the main thread alive
         return .ok
-
     }
 
     private func printUsage() {
@@ -203,6 +210,7 @@ final class CLI {
               clear             Clear all (asks to confirm if TTY)
               up|down|top N     Reorder operations
               version           Print build version
+              quit              Ask the watcher to shut down
 
             If the watcher is not running, most commands will fail with E3.
             """
