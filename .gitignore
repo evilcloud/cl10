@@ -1,0 +1,33 @@
+/.build/                 # all build products, any arch/config
+/.swiftpm/               # SPM metadata (workspace, cache)
+/Packages/               # legacy SPM
+/SourcePackages/         # Xcode-managed SPM checkouts
+
+*.xcodeproj/*
+!*.xcodeproj/project.pbxproj
+*.xcworkspace/
+DerivedData/
+xcuserdata/
+*.xccheckout
+*.xcscmblueprint
+
+.DS_Store
+.AppleDouble
+.LSOverride
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+*.log
+*.trace
+*.profraw
+*.profdata
+.swiftlint_cache
+
+/dist/
+/*.tar.gz
+/*.zip
+
+/build/                  # if you ever generate a non-SPM build dir
