@@ -9,12 +9,16 @@ final class IPCServer {
     private let acceptQueue = DispatchQueue(label: "com.cl10.ipc.accept")
     private let clientQueue = DispatchQueue(label: "com.cl10.ipc.client", attributes: .concurrent)
 
+    // Shared command handler used by server (and later the app UI)
+    private let router: CommandRouter
+
     // Set by CLI.runWatch(): called when client sends QUIT
     var onQuit: (() -> Void)?
 
     init(store: HistoryStore, clipboard: Clipboard) {
         self.store = store
         self.clipboard = clipboard
+        self.router = CommandRouter(store: store, clipboard: clipboard)
     }
 
     func start() throws {
@@ -95,88 +99,20 @@ final class IPCServer {
         close(fd)
     }
 
-    // Wire protocol: LIST, COPY n, ADD <text>, DEL n, CLEAR, UP n, DOWN n, TOP n, VERSION, PING, FIND <q>, QUIT
+    // Wire protocol handled here:
+    // QUIT (local), everything else via CommandRouter (LIST, COPY n, ADD <text>, DEL n, CLEAR, UP n, DOWN n, TOP n, VERSION, PING, FIND <q>)
     private func process(line: String) -> String {
         let (cmd, arg) = Wire.parse(line)
-        switch cmd {
-        case "PING":
-            return "PONG\n"
 
-        case "VERSION":
-            return "CL10 \(Constants.version)\n"
-
-        case "LIST":
-            let rows = store.list().enumerated().map { (i, it) in
-                let preview = Normalizer.escapePreview(it.previewFirstLine)
-                return "\(i)  \"\(preview)\"  \(Normalizer.humanBytes(it.sizeBytes))\n"
-            }.joined()
-            return rows.isEmpty ? "EMPTY\n" : rows
-
-        case "ADD":
-            guard let txt = arg else { return "ERR missing text\n" }
-            let norm = Normalizer.normalize(txt)
-            if Normalizer.isBlank(norm) { return "ERR blank\n" }
-            if Normalizer.byteCount(norm) > Constants.maxTextBytes { return "ERR oversize\n" }
-            store.pushText(norm)
-            return "OK\n"
-
-        case "COPY":
-            guard let a = arg, let idx = Int(a) else { return "ERR bad index\n" }
-            guard let item = store.get(idx) else { return "ERR no-such-index\n" }
-            clipboard.writeText(item.text)
-            store.touch(idx)
-            return "OK\n"
-
-        case "DEL":
-            guard let a = arg, let idx = Int(a) else { return "ERR bad index\n" }
-            store.delete(index: idx)
-            return "OK\n"
-
-        case "CLEAR":
-            store.clear()
-            return "OK\n"
-
-        case "UP":
-            guard let a = arg, let idx = Int(a) else { return "ERR bad index\n" }
-            store.moveUp(index: idx)
-            return "OK\n"
-
-        case "DOWN":
-            guard let a = arg, let idx = Int(a) else { return "ERR bad index\n" }
-            store.moveDown(index: idx)
-            return "OK\n"
-
-        case "TOP":
-            guard let a = arg, let idx = Int(a) else { return "ERR bad index\n" }
-            store.moveTop(index: idx)
-            return "OK\n"
-
-        case "FIND":
-            // FIND <query> → returns only matching rows, keeping canonical indices
-            guard let q = arg?.trimmingCharacters(in: .whitespacesAndNewlines), !q.isEmpty
-            else { return "ERR missing query\n" }
-
-            let lq = q.lowercased()
-            let rows = store.list().enumerated().compactMap { (i, it) -> String? in
-                if it.previewFirstLine.lowercased().contains(lq)
-                    || it.text.lowercased().contains(lq)
-                {
-                    let preview = Normalizer.escapePreview(it.previewFirstLine)
-                    return "\(i)  \"\(preview)\"  \(Normalizer.humanBytes(it.sizeBytes))\n"
-                }
-                return nil
-            }.joined()
-            return rows.isEmpty ? "EMPTY\n" : rows
-
-        case "QUIT":
-            // Reply OK, then trigger shared shutdown path on main queue
+        // QUIT is handled locally so we can terminate the process cleanly.
+        if cmd == "QUIT" {
             DispatchQueue.main.async { [weak self] in
                 self?.onQuit?()
             }
             return "OK\n"
-
-        default:
-            return "ERR unknown\n"
         }
+
+        // Delegate all other commands to the shared router.
+        return router.handle(cmd: cmd, arg: arg)
     }
 }

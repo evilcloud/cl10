@@ -17,15 +17,36 @@ final class CLI {
             printUsage()
             return .badArgs
         }
-        switch sub {
-        case "watch":
-            return runWatch()
 
+        // Management / local-process commands
+        switch sub {
+        case "watch": return runWatch()
+        case "version": return showVersion()
+        case "quit": return talk("QUIT")
+        case "help":
+            printUsage()
+            return .ok
+        default: break
+        }
+
+        // One-digit fast path: `cl10 3` → COPY 3
+        if let n = Int(sub), args.count == 1 {
+            return talk("COPY \(n)")
+        }
+
+        // Everything else is thin pass-through to the server/router
+        return forward(args)
+    }
+
+    // MARK: - Thin forwarder to the wire/CommandRouter
+    private func forward(_ args: [String]) -> ExitCode {
+        let cmd = args[0].lowercased()
+
+        switch cmd {
         case "list":
             return talk("LIST")
 
         case "find":
-            // cl10 find <query> → show only matching rows (indices stay canonical)
             guard args.count >= 2 else {
                 writeErr("E2 Missing query\n")
                 return .badArgs
@@ -33,69 +54,31 @@ final class CLI {
             let q = args.dropFirst().joined(separator: " ")
             return talk("FIND \(q)")
 
-        case "copy":
-            guard args.count >= 2, Int(args[1]) != nil else { return badIndex() }
-            return talk("COPY \(args[1])")
-
-        case "add":
-            guard args.count >= 2 else {
-                writeErr("E2 Missing text\n")
-                return .badArgs
-            }
-            let text = args.dropFirst().joined(separator: " ")
-            return talk("ADD \(text)")
+        case "copy", "add", "clear", "up", "down", "top":
+            // Minimal shaping; server/CommandRouter does the validation
+            let upper = cmd.uppercased()
+            let tail = args.dropFirst().joined(separator: " ")
+            let line = tail.isEmpty ? upper : "\(upper) \(tail)"
+            return talk(line)
 
         case "del":
+            // Client expands multi-targets to many DEL calls (server stays simple)
             guard args.count >= 2 else { return badIndex() }
             guard let targets = parseTargets(args.dropFirst()) else { return badIndex() }
             var rc: ExitCode = .ok
             for idx in targets {
                 let r = talk("DEL \(idx)")
-                if r != .ok { rc = r }  // keep last non-OK
+                if r != .ok { rc = r }
             }
             return rc
-
-        case "clear":
-            if isatty(STDIN_FILENO) != 0 {
-                writeErr("Type YES to clear all (cannot be undone): ")
-                fflush(stderr)
-                var lineptr: UnsafeMutablePointer<CChar>? = nil
-                var n: size_t = 0
-                let rc = getline(&lineptr, &n, stdin)
-                let input =
-                    (rc > 0)
-                    ? String(cString: lineptr!).trimmingCharacters(in: .whitespacesAndNewlines) : ""
-                if input != "YES" {
-                    writeErr("Aborted.\n")
-                    return .generic
-                }
-            }
-            return talk("CLEAR")
-
-        case "up":
-            guard args.count >= 2, Int(args[1]) != nil else { return badIndex() }
-            return talk("UP \(args[1])")
-
-        case "down":
-            guard args.count >= 2, Int(args[1]) != nil else { return badIndex() }
-            return talk("DOWN \(args[1])")
-
-        case "top":
-            guard args.count >= 2, Int(args[1]) != nil else { return badIndex() }
-            return talk("TOP \(args[1])")
-
-        case "version":
-            return showVersion()
-
-        case "quit":
-            // cl10 quit → ask the watcher to shut down gracefully
-            return talk("QUIT")
 
         default:
             printUsage()
             return .badArgs
         }
     }
+
+    // MARK: - Helpers
 
     private func parseTargets(_ parts: ArraySlice<String>) -> [Int]? {
         var out = Set<Int>()
@@ -123,23 +106,20 @@ final class CLI {
         writeOut("CLI \(Constants.version)\n")
         // Try to get watcher version; if not running, just return OK
         do {
-            let reply = try client.send(line: "VERSION")  // watcher responds like: "CL10 0.1.0-mvp\n"
+            let reply = try client.send(line: "VERSION")
             if !reply.isEmpty {
-                // Normalize to "Watcher <version>"
                 let watcherVersion =
                     reply
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                     .replacingOccurrences(of: "CL10 ", with: "")
                 writeOut("Watcher \(watcherVersion)\n")
             }
-        } catch {
-            // watcher not running; that's fine for 'version'
-        }
+        } catch { /* watcher not running; that's fine for 'version' */  }
         return .ok
     }
 
     private func badIndex() -> ExitCode {
-        writeErr("E2 Index out of range. Use 'cl10 list' for valid indices.\n")
+        writeErr("E2 Bad or missing index/indices. Use 'cl10 list' for valid indices.\n")
         return .badArgs
     }
 
@@ -228,18 +208,19 @@ final class CLI {
         let u = """
             Usage: cl10 <command> [args]
 
-              watch             Start the watcher (foreground)
-              list              Show indices with previews
-              find "q"          Show only entries matching q (keeps canonical indices)
-              copy N            Copy entry at index N to pasteboard
-              add "text"        Add arbitrary text as newest entry (no clipboard)
-              del N             Delete entry N
-              clear             Clear all (asks to confirm if TTY)
-              up|down|top N     Reorder operations
-              version           Print build version
-              quit              Ask the watcher to shut down
+              watch               Start the watcher (foreground)
+              0..9                Copy entry at index N (digit shortcut)
+              list                Show indices with previews
+              find "q"            Show only entries matching q (canonical indices)
+              copy N              Copy entry at index N to pasteboard
+              add "text"          Add arbitrary text as newest entry (no clipboard)
+              del N|N-M …         Delete one or many indices (lists/ranges allowed)
+              clear               Clear all (asks to confirm if TTY)
+              up|down|top N       Reorder operations
+              version             Print build version
+              quit                Ask the watcher to shut down
 
-            If the watcher is not running, most commands will fail with E3.
+            (Behavior lives in the app host via CommandRouter; CLI just forwards.)
             """
         writeErr(u + "\n")
     }
