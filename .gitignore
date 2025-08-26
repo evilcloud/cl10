@@ -19,6 +19,7 @@ xcuserdata/
 *~
 .vscode/
 .idea/
+.build/
 
 *.log
 *.trace
