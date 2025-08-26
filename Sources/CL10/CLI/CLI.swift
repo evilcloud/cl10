@@ -21,6 +21,7 @@ final class CLI {
         // Management / local-process commands
         switch sub {
         case "watch": return runWatch()
+        case "shell": return CLIShell(cli: self).run()
         case "version": return showVersion()
         case "quit": return talk("QUIT")
         case "help":
@@ -209,6 +210,7 @@ final class CLI {
             Usage: cl10 <command> [args]
 
               watch               Start the watcher (foreground)
+              shell               Start interactive shell
               0..9                Copy entry at index N (digit shortcut)
               list                Show indices with previews
               find "q"            Show only entries matching q (canonical indices)
