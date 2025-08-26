@@ -1,7 +1,7 @@
-/.build/                 # all build products, any arch/config
-/.swiftpm/               # SPM metadata (workspace, cache)
-/Packages/               # legacy SPM
-/SourcePackages/         # Xcode-managed SPM checkouts
+/.build/                 
+/.swiftpm/               
+/Packages/               
+/SourcePackages/         
 
 *.xcodeproj/*
 !*.xcodeproj/project.pbxproj
@@ -31,4 +31,4 @@ xcuserdata/
 /*.tar.gz
 /*.zip
 
-/build/                  # if you ever generate a non-SPM build dir
+/build/                
