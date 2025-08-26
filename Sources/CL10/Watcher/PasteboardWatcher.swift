@@ -13,7 +13,7 @@ final class PasteboardWatcher {
 
     func start() {
         let t = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .userInitiated))
-        t.schedule(deadline: .now(), repeating: .milliseconds(150))
+        t.schedule(deadline: .now(), repeating: .milliseconds(300))
         t.setEventHandler { [weak self] in self?.tick() }
         t.resume()
         self.timer = t

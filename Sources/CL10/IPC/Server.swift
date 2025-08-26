@@ -136,6 +136,24 @@ final class IPCServer {
             guard let a = arg, let idx = Int(a) else { return "ERR bad index\n" }
             store.moveTop(index: idx)
             return "OK\n"
+        case "FIND":
+            // FIND <query>  → returns only matching rows, keeping canonical indices
+            guard let q = arg?.trimmingCharacters(in: .whitespacesAndNewlines), !q.isEmpty
+            else { return "ERR missing query\n" }
+
+            let lq = q.lowercased()
+            let rows = store.list().enumerated().compactMap { (i, it) -> String? in
+                // Match on preview line OR full text, case-insensitive
+                if it.previewFirstLine.lowercased().contains(lq)
+                    || it.text.lowercased().contains(lq)
+                {
+                    let preview = Normalizer.escapePreview(it.previewFirstLine)
+                    return "\(i)  \"\(preview)\"  \(Normalizer.humanBytes(it.sizeBytes))\n"
+                }
+                return nil
+            }.joined()
+
+            return rows.isEmpty ? "EMPTY\n" : rows
         default:
             return "ERR unknown\n"
         }

@@ -23,6 +23,14 @@ final class CLI {
 
         case "list":
             return talk("LIST")
+        case "find":
+            // cl10 find <query> → show only matching rows (indices stay canonical)
+            guard args.count >= 2 else {
+                writeErr("E2 Missing query\n")
+                return .badArgs
+            }
+            let q = args.dropFirst().joined(separator: " ")
+            return talk("FIND \(q)")
 
         case "copy":
             guard args.count >= 2, Int(args[1]) != nil else { return badIndex() }
@@ -188,6 +196,7 @@ final class CLI {
 
               watch             Start the watcher (foreground)
               list              Show indices with previews
+              find "q"          Show only entries matching q (keeps canonical indices)
               copy N            Copy entry at index N to pasteboard
               add "text"        Add arbitrary text as newest entry (no clipboard)
               del N             Delete entry N
