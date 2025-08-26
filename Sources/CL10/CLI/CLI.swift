@@ -46,8 +46,14 @@ final class CLI {
             return talk("ADD \(text)")
 
         case "del":
-            guard args.count >= 2, Int(args[1]) != nil else { return badIndex() }
-            return talk("DEL \(args[1])")
+            guard args.count >= 2 else { return badIndex() }
+            guard let targets = parseTargets(args.dropFirst()) else { return badIndex() }
+            var rc: ExitCode = .ok
+            for idx in targets {
+                let r = talk("DEL \(idx)")
+                if r != .ok { rc = r }  // keep last non-OK
+            }
+            return rc
 
         case "clear":
             if isatty(STDIN_FILENO) != 0 {
@@ -89,6 +95,27 @@ final class CLI {
             printUsage()
             return .badArgs
         }
+    }
+
+    private func parseTargets(_ parts: ArraySlice<String>) -> [Int]? {
+        var out = Set<Int>()
+        for tok in parts {
+            for piece in tok.split(separator: ",") {
+                if let dash = piece.firstIndex(of: "-") {
+                    let aStr = piece[..<dash]
+                    let bStr = piece[piece.index(after: dash)...]
+                    guard let a = Int(aStr), let b = Int(bStr) else { return nil }
+                    let lo = min(a, b)
+                    let hi = max(a, b)
+                    for i in lo...hi { out.insert(i) }
+                } else {
+                    guard let v = Int(piece) else { return nil }
+                    out.insert(v)
+                }
+            }
+        }
+        // Delete descending so indices remain valid
+        return out.sorted(by: >)
     }
 
     private func showVersion() -> ExitCode {
